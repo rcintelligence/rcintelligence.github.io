@@ -403,6 +403,19 @@
   .nsa-box h4{margin:0 0 8px; font-size:15px; color:#2bd9c4}
   .nsa-box p{margin:0; font-size:14px; color:#dcebf8}
   @media (max-width: 980px){ .offer-grid{grid-template-columns:1fr} .founder-grid{grid-template-columns:1fr} .nsa-banner{grid-template-columns:1fr} }
+  /* Testimonials — fully styled and ready to publish, but held unpublished (see the section markup):
+     it stays hidden until real, client-approved quotes are added. To publish, remove the section's
+     `hidden` attribute and fill the template card's slots with the approved quote, name, title, org. */
+  .testimonials-section[hidden]{display:none !important}
+  .testimonial-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:18px}
+  .testimonial-card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:26px; box-shadow:var(--shadow-sm); display:flex; flex-direction:column; margin:0}
+  .testimonial-card .quote-mark{font-family:"IBM Plex Serif", serif; font-size:44px; line-height:.6; color:var(--gold); margin:0 0 16px}
+  .testimonial-card blockquote{margin:0 0 20px; font-family:"IBM Plex Serif", serif; font-size:17.5px; line-height:1.55; color:var(--ink)}
+  .testimonial-card figcaption{margin-top:auto; border-top:1px solid var(--line); padding-top:16px}
+  .testimonial-card .t-name{display:block; font-size:15px; font-weight:700; color:var(--ink)}
+  .testimonial-card .t-role{display:block; font-size:13.5px; color:var(--muted); margin-top:2px}
+  @media (max-width: 980px){ .testimonial-grid{grid-template-columns:1fr 1fr} }
+  @media (max-width: 680px){ .testimonial-grid{grid-template-columns:1fr} }
   /* Reveal — content is visible by default; animation only enhances when JS confirms it can reveal promptly */
   .reveal{opacity:1; transform:none}
   html.js-anim .reveal{opacity:0; transform:translateY(14px); transition:opacity .5s ease, transform .5s ease}
@@ -1102,6 +1115,32 @@
     </div>
   </section>
 
+  <!-- TESTIMONIALS — READY TO PUBLISH, HELD UNTIL REAL QUOTES EXIST.
+       RCI has no client testimonials yet, so this section is intentionally hidden from visitors
+       (the `hidden` attribute below) and is not linked anywhere in the navigation. Never add
+       invented quotes or names. To publish: (1) obtain a real client's written approval to quote
+       them; (2) replace the bracketed slots in the template card with the approved quote, name,
+       title, and organization — duplicate the <figure> once per testimonial; (3) remove `hidden`. -->
+  <section id="testimonials" class="testimonials-section" hidden>
+    <div class="wrap">
+      <div class="section-head reveal">
+        <p class="label">Client voices</p>
+        <h2>What providers say about working with RCI</h2>
+        <p>Firsthand accounts from the practices RCI has screened, assessed, and recovered for.</p>
+      </div>
+      <div class="testimonial-grid">
+        <figure class="testimonial-card reveal">
+          <p class="quote-mark" aria-hidden="true">&ldquo;</p>
+          <blockquote>[Approved client quote — paste the exact words the client approved for publication.]</blockquote>
+          <figcaption>
+            <span class="t-name">[Full name]</span>
+            <span class="t-role">[Title] · [Organization]</span>
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
   <!-- TRUST & DATA PROTECTION -->
   <section id="trust" style="background:var(--bg-soft)">
     <div class="wrap">
@@ -1286,9 +1325,10 @@
               <label for="fMsg">How can we help? *</label>
               <textarea id="fMsg" name="message" required placeholder="Briefly describe your practice, the states you bill in, and what you'd like to see."></textarea>
             </div>
+            <input type="text" id="fHoney" name="_honey" style="display:none" tabindex="-1" autocomplete="off" aria-hidden="true" />
             <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
             <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center">
-              <button type="submit" class="btn btn-primary">Prepare email to RCI →</button>
+              <button type="submit" class="btn btn-primary">Send message →</button>
               <a class="btn btn-ghost" href="mailto:kierra@rcintelligence.net">Email directly</a>
             </div>
             <p class="form-note">Please don't include patient information or other sensitive personal details in your message.</p>
@@ -1469,7 +1509,7 @@
     });
   });
 
-  // Contact form -> mailto (nothing is sent by this page itself)
+  // Contact form -> FormSubmit AJAX endpoint
   var form = document.getElementById('contactForm');
   var status = document.getElementById('formStatus');
   form.addEventListener('submit', function(e){
@@ -1489,14 +1529,48 @@
       status.style.color = '#b42318';
       return;
     }
+    var honeyEl = document.getElementById('fHoney');
+    var honey = honeyEl ? honeyEl.value : '';
+    if(honey){
+      status.style.color = '';
+      status.textContent = 'Thank you — your message has been sent. Kierra will reply to the email address you gave.';
+      form.reset();
+      return;
+    }
     status.style.color = '';
-    status.textContent = 'Opening your mail app with your message ready to send…';
-    var subject = 'RCI inquiry — ' + topic;
-    var body = 'Name: ' + name + '\n' +
-      (org ? 'Organization: ' + org + '\n' : '') +
-      'Email: ' + email + '\n' +
-      'Topic: ' + topic + '\n\n' + msg;
-    window.location.href = 'mailto:kierra@rcintelligence.net?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    status.textContent = 'Sending…';
+    var submitBtn = form.querySelector('button[type="submit"]');
+    if(submitBtn) submitBtn.disabled = true;
+    fetch('https://formsubmit.co/ajax/kierra@rcintelligence.net', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        name: name,
+        organization: org,
+        email: email,
+        topic: topic,
+        message: msg,
+        _subject: 'RCI inquiry — ' + topic,
+        _template: 'table',
+        _captcha: 'false',
+        _honey: honey
+      })
+    }).then(function(response){
+      if(!response.ok) throw new Error('Request failed');
+      return response.json().catch(function(){ return {}; });
+    }).then(function(){
+      status.style.color = '';
+      status.textContent = 'Thank you — your message has been sent. Kierra will reply to the email address you gave.';
+      form.reset();
+    }).catch(function(){
+      status.style.color = '#b42318';
+      status.textContent = 'Something went wrong — please email kierra@rcintelligence.net directly.';
+    }).then(function(){
+      if(submitBtn) submitBtn.disabled = false;
+    });
   });
 
   // Reveal on scroll
