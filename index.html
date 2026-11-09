@@ -1510,8 +1510,12 @@
   });
 
   // Contact form -> FormSubmit AJAX endpoint
+  // NOTE: the status element must not be stored in a variable named `status` —
+  // window.status is a special string-coercing property, so a top-level
+  // `var status` never holds the element; writes to it silently no-op and
+  // `status.style` throws, which killed this handler before the fetch ran.
   var form = document.getElementById('contactForm');
-  var status = document.getElementById('formStatus');
+  var formStatus = document.getElementById('formStatus');
   form.addEventListener('submit', function(e){
     e.preventDefault();
     var name = document.getElementById('fName').value.trim();
@@ -1520,28 +1524,29 @@
     var topic = document.getElementById('fTopic').value;
     var msg = document.getElementById('fMsg').value.trim();
     if(!name || !email || !msg){
-      status.textContent = 'Please add your name, email, and a short message so we can reply.';
-      status.style.color = '#b42318';
+      formStatus.textContent = 'Please add your name, email, and a short message so we can reply.';
+      formStatus.style.color = '#b42318';
       return;
     }
     if(email.indexOf('@') === -1 || email.indexOf('.') === -1){
-      status.textContent = 'That email address doesn\'t look complete — please check it and try again.';
-      status.style.color = '#b42318';
+      formStatus.textContent = 'That email address doesn\'t look complete — please check it and try again.';
+      formStatus.style.color = '#b42318';
       return;
     }
     var honeyEl = document.getElementById('fHoney');
     var honey = honeyEl ? honeyEl.value : '';
     if(honey){
-      status.style.color = '';
-      status.textContent = 'Thank you — your message has been sent. Kierra will reply to the email address you gave.';
+      formStatus.style.color = '';
+      formStatus.textContent = 'Thank you — your message has been sent. Kierra will reply to the email address you gave.';
       form.reset();
       return;
     }
-    status.style.color = '';
-    status.textContent = 'Sending…';
+    formStatus.style.color = '';
+    formStatus.textContent = 'Sending…';
     var submitBtn = form.querySelector('button[type="submit"]');
     if(submitBtn) submitBtn.disabled = true;
-    fetch('https://formsubmit.co/ajax/kierra@rcintelligence.net', {
+    var controller = null;
+    var fetchOpts = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1558,16 +1563,25 @@
         _captcha: 'false',
         _honey: honey
       })
-    }).then(function(response){
+    };
+    if('AbortController' in window){
+      controller = new AbortController();
+      fetchOpts.signal = controller.signal;
+      setTimeout(function(){ controller.abort(); }, 20000);
+    }
+    fetch('https://formsubmit.co/ajax/kierra@rcintelligence.net', fetchOpts).then(function(response){
       if(!response.ok) throw new Error('Request failed');
       return response.json().catch(function(){ return {}; });
-    }).then(function(){
-      status.style.color = '';
-      status.textContent = 'Thank you — your message has been sent. Kierra will reply to the email address you gave.';
+    }).then(function(data){
+      // FormSubmit can answer HTTP 200 with a failure payload (e.g. before the
+      // form is activated) — only show the sent confirmation on a real success.
+      if(data && (data.success === false || data.success === 'false')) throw new Error('Request failed');
+      formStatus.style.color = '';
+      formStatus.textContent = 'Thank you — your message has been sent. Kierra will reply to the email address you gave.';
       form.reset();
     }).catch(function(){
-      status.style.color = '#b42318';
-      status.textContent = 'Something went wrong — please email kierra@rcintelligence.net directly.';
+      formStatus.style.color = '#b42318';
+      formStatus.textContent = 'Something went wrong — please email kierra@rcintelligence.net directly.';
     }).then(function(){
       if(submitBtn) submitBtn.disabled = false;
     });
