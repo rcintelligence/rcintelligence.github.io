@@ -1294,7 +1294,7 @@
         <div class="contact-card reveal">
           <h3 style="margin-bottom:6px">Request a demo</h3>
           <p>Fill this in and press Send message — your note comes straight to our inbox, and we'll reply to the email address you give.</p>
-          <form id="contactForm" novalidate>
+          <form id="contactForm" action="https://formsubmit.co/kalderman@rcintelligence.net" method="POST" novalidate>
             <div class="form-row">
               <div class="field">
                 <label for="fName">Your name *</label>
@@ -1326,6 +1326,11 @@
               <textarea id="fMsg" name="message" required placeholder="Briefly describe your practice, the states you bill in, and what you'd like to see."></textarea>
             </div>
             <input type="text" id="fHoney" name="_honey" style="display:none" tabindex="-1" autocomplete="off" aria-hidden="true" />
+            <!-- Standard-route settings, used only if the form ever posts without JavaScript -->
+            <input type="hidden" name="_subject" value="RCI inquiry — website contact form" />
+            <input type="hidden" name="_template" value="table" />
+            <input type="hidden" name="_captcha" value="false" />
+            <input type="hidden" name="_next" value="https://revenuecomplianceintelligence.com/#contact" />
             <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
             <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center">
               <button type="submit" class="btn btn-primary">Send message →</button>
@@ -1569,19 +1574,97 @@
       fetchOpts.signal = controller.signal;
       setTimeout(function(){ controller.abort(); }, 20000);
     }
-    fetch('https://formsubmit.co/ajax/kierra@rcintelligence.net', fetchOpts).then(function(response){
-      if(!response.ok) throw new Error('Request failed');
-      return response.json().catch(function(){ return {}; });
-    }).then(function(data){
+    // Delivery targets the account's primary mailbox address
+    // (kalderman@rcintelligence.net). kierra@ is an alias of the same
+    // mailbox, but FormSubmit activation mail addressed to the alias never
+    // arrived despite repeated submissions, so the form now targets the
+    // primary address directly. (The public "Email directly" address stays
+    // kierra@rcintelligence.net — both reach the same inbox.)
+    var FS_AJAX = 'https://formsubmit.co/ajax/kalderman@rcintelligence.net';
+    var FS_STANDARD = 'https://formsubmit.co/kalderman@rcintelligence.net';
+
+    // FormSubmit's canonical activation trigger is a submission through its
+    // standard (non-AJAX) route: the first one makes FormSubmit email an
+    // "Activate Form" link to the destination address. If the AJAX route
+    // refuses a submission (or the request fails outright), retry the same
+    // message once through the standard route in a hidden frame, so the
+    // activation request is generated there too. Runs at most once per submit.
+    var fallbackTried = false;
+    function fsStandardFallback(){
+      if(fallbackTried) return;
+      fallbackTried = true;
+      try{
+        var sink = document.getElementById('fsSink');
+        if(!sink){
+          sink = document.createElement('iframe');
+          sink.id = 'fsSink';
+          sink.name = 'fsSink';
+          sink.style.display = 'none';
+          sink.setAttribute('aria-hidden', 'true');
+          sink.setAttribute('tabindex', '-1');
+          document.body.appendChild(sink);
+        }
+        var f = document.createElement('form');
+        f.method = 'POST';
+        f.action = FS_STANDARD;
+        f.target = 'fsSink';
+        f.style.display = 'none';
+        var fields = {
+          name: name,
+          organization: org,
+          email: email,
+          topic: topic,
+          message: msg,
+          _subject: 'RCI inquiry — ' + topic,
+          _template: 'table',
+          _captcha: 'false',
+          _honey: honey
+        };
+        Object.keys(fields).forEach(function(k){
+          var input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = k;
+          input.value = fields[k];
+          f.appendChild(input);
+        });
+        document.body.appendChild(f);
+        f.submit();
+        setTimeout(function(){ if(f.parentNode) f.parentNode.removeChild(f); }, 4000);
+      }catch(fallbackErr){ /* the on-screen error already tells the visitor what to do */ }
+    }
+
+    fetch(FS_AJAX, fetchOpts).then(function(response){
+      // Read FormSubmit's actual reply on every outcome — its JSON body says
+      // whether the submission was delivered, refused, or is waiting on the
+      // one-time form activation. Keep that answer (status + payload) instead
+      // of discarding it, and let the status line below use its message.
+      return response.json().catch(function(){ return {}; }).then(function(data){
+        return { ok: response.ok, fsStatus: response.status, data: data || {} };
+      });
+    }).then(function(result){
+      var data = result.data;
+      var fsMessage = (data && data.message) ? String(data.message) : '';
+      if(window.console && console.warn) console.warn('RCI contact form — FormSubmit replied:', result.fsStatus, data);
       // FormSubmit can answer HTTP 200 with a failure payload (e.g. before the
       // form is activated) — only show the sent confirmation on a real success.
-      if(data && (data.success === false || data.success === 'false')) throw new Error('Request failed');
+      var refused = !result.ok || (data && (data.success === false || data.success === 'false'));
+      if(refused){
+        var err = new Error(fsMessage || 'Request failed');
+        err.fsMessage = fsMessage;
+        throw err;
+      }
       formStatus.style.color = '';
       formStatus.textContent = 'Thank you — your message has been sent. Kierra will reply to the email address you gave.';
       form.reset();
-    }).catch(function(){
+    }).catch(function(err){
+      fsStandardFallback();
       formStatus.style.color = '#b42318';
-      formStatus.textContent = 'Something went wrong — please email kierra@rcintelligence.net directly.';
+      var fsMessage = (err && err.fsMessage) ? String(err.fsMessage) : '';
+      if(fsMessage.toLowerCase().indexOf('activ') !== -1){
+        formStatus.textContent = 'This form\'s delivery isn\'t switched on yet — a fresh activation request was just sent. Please email kierra@rcintelligence.net directly so your message isn\'t delayed.';
+      } else {
+        formStatus.textContent = 'Something went wrong — please email kierra@rcintelligence.net directly.';
+      }
     }).then(function(){
       if(submitBtn) submitBtn.disabled = false;
     });
